@@ -36,17 +36,37 @@ async def call_agent(
 
     request_id = str(uuid.uuid4())
     
-    # Use custom_input if provided, otherwise use default structure
-    input_payload = custom_input if custom_input is not None else {
-        "text": text, 
-        "metadata": {"language": "en", "extra": {}}
-    }
+    # Build metadata with file uploads if available
+    metadata: Dict[str, Any] = {"language": "en", "extra": {}}
+    file_uploads = context.get("file_uploads", [])
+    
+    if file_uploads and len(file_uploads) > 0:
+        # For document summarizer agent, send first file as base64 in metadata
+        # Note: Currently supports single file; can be extended for multiple files
+        first_file = file_uploads[0]
+        base64_data = first_file.get("base64_data", "")
+        if base64_data:  # Only add if not empty
+            metadata["file_base64"] = base64_data
+            metadata["mime_type"] = first_file.get("mime_type", "application/octet-stream")
+            metadata["filename"] = first_file.get("filename", "uploaded_file")
+            # Debug logging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Sending file to {agent_meta.name}: {first_file.get('filename', 'unknown')} ({len(base64_data)} chars base64)")
+        else:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"File upload found but base64_data is empty for {agent_meta.name}")
+    else:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"No file uploads in context for {agent_meta.name}")
     
     handshake = AgentRequest(
         request_id=request_id,
         agent_name=agent_meta.name,
         intent=intent,
-        input=input_payload,
+        input={"text": text, "metadata": metadata},
         context=context,
     )
 
